@@ -1,0 +1,1134 @@
+-- ============================================
+--         LIGHTNING MOBILE CMDBAR + ESP
+--         prepared by halilibrahimseviml1 & Gemini AI
+-- ============================================
+
+local Players = game:GetService("Players")
+local localPlayer = Players.LocalPlayer
+local uis = game:GetService("UserInputService")
+local runService = game:GetService("RunService")
+local camera = workspace.CurrentCamera
+local coreGui = game:GetService("CoreGui")
+local httpService = game:GetService("HttpService")
+local marketplaceService = game:GetService("MarketplaceService")
+
+-- GUI Parent
+local guiParent
+if gethui then
+    guiParent = gethui()
+else
+    local success = pcall(function()
+        local testFrame = Instance.new("Frame")
+        testFrame.Parent = coreGui
+        testFrame:Destroy()
+    end)
+    if success then
+        guiParent = coreGui
+    else
+        guiParent = localPlayer:WaitForChild("PlayerGui")
+    end
+end
+
+-- Clean Old UIs
+if guiParent:FindFirstChild("MobileCmdBar") then
+    guiParent.MobileCmdBar:Destroy()
+end
+if guiParent:FindFirstChild("HelpMenuGui") then
+    guiParent.HelpMenuGui:Destroy()
+end
+if guiParent:FindFirstChild("ControlPanelGui") then
+    guiParent.ControlPanelGui:Destroy()
+end
+if guiParent:FindFirstChild("FlyControlGui") then
+    guiParent.FlyControlGui:Destroy()
+end
+if guiParent:FindFirstChild("WelcomeGui") then
+    guiParent.WelcomeGui:Destroy()
+end
+
+-- ============================
+--         ESP MODULE
+-- ============================
+local espEnabled = false
+local espSize = 1.0
+local espShowHealth = true
+local espConnections = {}
+local healthConnections = {}
+local espCustomColor = Color3.fromRGB(255, 255, 0)
+local espTeamColorMode = true
+
+local function removeESP(player)
+    if player.Character and player.Character:FindFirstChild("TeamESP") then
+        player.Character.TeamESP:Destroy()
+    end
+    if healthConnections[player] then
+        healthConnections[player]:Disconnect()
+        healthConnections[player] = nil
+    end
+end
+
+local function createESP(player)
+    if player == localPlayer then return end
+
+    local function addVisuals(character)
+        if not character:WaitForChild("HumanoidRootPart", 5) then return end
+        local head = character:WaitForChild("Head", 5)
+        if not head then return end
+
+        if character:FindFirstChild("TeamESP") then
+            character.TeamESP:Destroy()
+        end
+
+        local folder = Instance.new("Folder")
+        folder.Name = "TeamESP"
+        folder.Parent = character
+
+        local highlight = Instance.new("Highlight")
+        highlight.Name = "BoxESP"
+        highlight.Adornee = character
+        highlight.FillTransparency = 0.5
+        highlight.OutlineTransparency = 0
+        highlight.Enabled = espEnabled
+        highlight.Parent = folder
+
+        local billboard = Instance.new("BillboardGui")
+        billboard.Name = "NameESP"
+        billboard.Adornee = head
+        billboard.Size = UDim2.new(0, 80 * espSize, 0, 30 * espSize)
+        billboard.StudsOffset = Vector3.new(0, 1.8, 0)
+        billboard.AlwaysOnTop = true
+        billboard.Enabled = espEnabled
+        billboard.Parent = folder
+
+        local textLabel = Instance.new("TextLabel")
+        textLabel.Size = UDim2.new(1, 0, 1, 0)
+        textLabel.BackgroundTransparency = 1
+        textLabel.TextSize = 9 * espSize
+        textLabel.Font = Enum.Font.SourceSansBold
+        textLabel.TextWrapped = true
+        textLabel.RichText = true
+        textLabel.Parent = billboard
+
+        local humanoid = character:WaitForChild("Humanoid", 5)
+
+        local function updateVisuals()
+            if not folder.Parent then return end
+
+            local fillColor = espCustomColor
+            local nameColor = espCustomColor
+
+            if espTeamColorMode then
+                fillColor = Color3.fromRGB(255, 255, 0)
+                nameColor = Color3.fromRGB(255, 255, 0)
+                if player.Team and localPlayer.Team then
+                    if player.Team == localPlayer.Team then
+                        fillColor = Color3.fromRGB(0, 255, 0)
+                        nameColor = Color3.fromRGB(0, 255, 0)
+                    else
+                        fillColor = Color3.fromRGB(255, 0, 0)
+                        nameColor = Color3.fromRGB(255, 0, 0)
+                    end
+                end
+            end
+
+            highlight.FillColor = fillColor
+
+            local r, g, b = nameColor.R*255, nameColor.G*255, nameColor.B*255
+            local coloredName = string.format('<font color="rgb(%d,%d,%d)">%s</font>', r, g, b, player.Name)
+
+            local teamName = player.Team and player.Team.Name or ""
+            local teamPart = ""
+            if teamName ~= "" then
+                teamPart = string.format(' <font color="rgb(255,255,255)">(%s)</font>', teamName)
+            end
+
+            local healthPart = ""
+            if humanoid and espShowHealth then
+                local hp = math.floor(humanoid.Health)
+                local maxHp = math.floor(humanoid.MaxHealth)
+                healthPart = string.format('\n<font color="rgb(255,255,0)">[%d/%d]</font>', hp, maxHp)
+            end
+
+            textLabel.Text = coloredName .. teamPart .. healthPart
+        end
+
+        updateVisuals()
+
+        if humanoid then
+            healthConnections[player] = humanoid.HealthChanged:Connect(updateVisuals)
+        end
+
+        player:GetPropertyChangedSignal("Team"):Connect(updateVisuals)
+        localPlayer:GetPropertyChangedSignal("Team"):Connect(updateVisuals)
+    end
+
+    local conn = player.CharacterAdded:Connect(addVisuals)
+    espConnections[player] = conn
+
+    if player.Character then
+        task.spawn(function()
+            addVisuals(player.Character)
+        end)
+    end
+end
+
+local function refreshAllESP()
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= localPlayer and plr.Character then
+            local folder = plr.Character:FindFirstChild("TeamESP")
+            if folder then
+                for _, child in ipairs(folder:GetChildren()) do
+                    if child:IsA("Highlight") or child:IsA("BillboardGui") then
+                        child.Enabled = espEnabled
+                    end
+                    if child:IsA("BillboardGui") then
+                        child.Size = UDim2.new(0, 80 * espSize, 0, 30 * espSize)
+                        local label = child:FindFirstChild("TextLabel")
+                        if label then
+                            label.TextSize = 9 * espSize
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function initESP()
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer then
+            createESP(player)
+        end
+    end
+    refreshAllESP()
+end
+
+Players.PlayerAdded:Connect(function(player)
+    if player ~= localPlayer then
+        createESP(player)
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    if espConnections[player] then
+        espConnections[player]:Disconnect()
+        espConnections[player] = nil
+    end
+    removeESP(player)
+end)
+
+-- ============================
+--         WELCOME POPUP UI
+-- ============================
+local function showWelcomePopup()
+    if guiParent:FindFirstChild("WelcomeGui") then
+        guiParent.WelcomeGui:Destroy()
+    end
+
+    local welcomeGui = Instance.new("ScreenGui")
+    welcomeGui.Name = "WelcomeGui"
+    welcomeGui.ResetOnSpawn = false
+    welcomeGui.DisplayOrder = 10 -- Always on top of main bar
+    welcomeGui.Parent = guiParent
+
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Size = UDim2.new(0, 440, 0, 220)
+    mainFrame.Position = UDim2.new(0.5, -220, 0.4, -110)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(20, 24, 33)
+    mainFrame.BorderSizePixel = 0
+    mainFrame.Active = true
+    mainFrame.Draggable = true
+    mainFrame.Parent = welcomeGui
+    Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 6)
+
+    local topBar = Instance.new("Frame")
+    topBar.Size = UDim2.new(1, 0, 0, 35)
+    topBar.BackgroundColor3 = Color3.fromRGB(160, 0, 0)
+    topBar.BorderSizePixel = 0
+    topBar.Parent = mainFrame
+    Instance.new("UICorner", topBar).CornerRadius = UDim.new(0, 6)
+
+    local topCover = Instance.new("Frame")
+    topCover.Size = UDim2.new(1, 0, 0, 6)
+    topCover.Position = UDim2.new(0, 0, 1, -6)
+    topCover.BackgroundColor3 = Color3.fromRGB(160, 0, 0)
+    topCover.BorderSizePixel = 0
+    topCover.Parent = topBar
+
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Size = UDim2.new(1, -40, 1, 0)
+    titleLabel.Position = UDim2.new(0, 12, 0, 0)
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.Text = "LIGHTNING HUB - WELCOME"
+    titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    titleLabel.TextSize = 13
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    titleLabel.Parent = topBar
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 35, 0, 35)
+    closeBtn.Position = UDim2.new(1, -35, 0, 0)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(140, 0, 0)
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Text = "X"
+    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeBtn.TextSize = 14
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.Parent = topBar
+    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 4)
+
+    closeBtn.MouseButton1Click:Connect(function()
+        welcomeGui:Destroy()
+    end)
+
+    local msgLabel = Instance.new("TextLabel")
+    msgLabel.Size = UDim2.new(1, -20, 0, 45)
+    msgLabel.Position = UDim2.new(0, 10, 0, 45)
+    msgLabel.BackgroundTransparency = 1
+    msgLabel.Text = "There is much more on our Discord server, please don't forget to visit!"
+    msgLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
+    msgLabel.TextSize = 12
+    msgLabel.Font = Enum.Font.Gotham
+    msgLabel.TextWrapped = true
+    msgLabel.TextXAlignment = Enum.TextXAlignment.Center
+    msgLabel.Parent = mainFrame
+
+    -- Discord Link Input Field
+    local linkBox = Instance.new("TextBox")
+    linkBox.Size = UDim2.new(0, 290, 0, 38)
+    linkBox.Position = UDim2.new(0, 15, 0, 100)
+    linkBox.BackgroundColor3 = Color3.fromRGB(30, 35, 45)
+    linkBox.BorderSizePixel = 0
+    linkBox.Text = "https://discord.gg/Ewbfhrzgf"
+    linkBox.TextColor3 = Color3.fromRGB(0, 162, 255) -- Blue Link Color
+    linkBox.TextSize = 12
+    linkBox.Font = Enum.Font.GothamBold
+    linkBox.ClearTextOnFocus = false
+    linkBox.Editable = false
+    linkBox.Parent = mainFrame
+    Instance.new("UICorner", linkBox).CornerRadius = UDim.new(0, 4)
+
+    -- Copy Button
+    local copyBtn = Instance.new("TextButton")
+    copyBtn.Size = UDim2.new(0, 105, 0, 38)
+    copyBtn.Position = UDim2.new(1, -120, 0, 100)
+    copyBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
+    copyBtn.BorderSizePixel = 0
+    copyBtn.Text = "COPY"
+    copyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    copyBtn.TextSize = 12
+    copyBtn.Font = Enum.Font.GothamBold
+    copyBtn.Parent = mainFrame
+    Instance.new("UICorner", copyBtn).CornerRadius = UDim.new(0, 4)
+
+    copyBtn.MouseButton1Click:Connect(function()
+        pcall(function()
+            if setclipboard then
+                setclipboard("https://discord.gg/Ewbfhrzgf")
+            end
+        end)
+        copyBtn.Text = "COPIED!"
+        task.delay(1.5, function()
+            if copyBtn then copyBtn.Text = "COPY" end
+        end)
+    end)
+
+    -- Credits Label
+    local creditLabel = Instance.new("TextLabel")
+    creditLabel.Size = UDim2.new(1, 0, 0, 25)
+    creditLabel.Position = UDim2.new(0, 0, 1, -30)
+    creditLabel.BackgroundTransparency = 1
+    creditLabel.Text = "prepared by: halilibrahimseviml1 & Gemini AI"
+    creditLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+    creditLabel.TextSize = 11
+    creditLabel.Font = Enum.Font.GothamItalic
+    creditLabel.Parent = mainFrame
+end
+
+-- ============================
+--         EXTRAS & CONTROL PANELS
+-- ============================
+
+local activeStatusUis = {}
+
+local function removeStatusUi(name)
+    if activeStatusUis[name] then
+        activeStatusUis[name]:Destroy()
+        activeStatusUis[name] = nil
+    end
+end
+
+local function createStatusUi(name, text, onOffCallback)
+    removeStatusUi(name)
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = name .. "StatusGui"
+    gui.ResetOnSpawn = false
+    gui.Parent = guiParent
+    activeStatusUis[name] = gui
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 210, 0, 45)
+    frame.Position = UDim2.new(0.5, -105, 0.08, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(20, 24, 33)
+    frame.BorderSizePixel = 0
+    frame.Active = true
+    frame.Draggable = true
+    frame.Parent = gui
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -60, 1, 0)
+    label.Position = UDim2.new(0, 10, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextSize = 12
+    label.Font = Enum.Font.GothamBold
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.RichText = true
+    label.Parent = frame
+
+    local offBtn = Instance.new("TextButton")
+    offBtn.Size = UDim2.new(0, 45, 0, 30)
+    offBtn.Position = UDim2.new(1, -50, 0.5, -15)
+    offBtn.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
+    offBtn.BorderSizePixel = 0
+    offBtn.Text = "OFF"
+    offBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    offBtn.TextSize = 12
+    offBtn.Font = Enum.Font.GothamBold
+    offBtn.Parent = frame
+    Instance.new("UICorner", offBtn).CornerRadius = UDim.new(0, 4)
+
+    offBtn.MouseButton1Click:Connect(function()
+        onOffCallback()
+        removeStatusUi(name)
+    end)
+end
+
+-- Fly & Up/Down Mobile Controls
+local flying = false
+local flySpeed = 50
+local flyConnection = nil
+local bodyGyro, bodyVelocity
+local flyUpPressed = false
+local flyDownPressed = false
+local flyInputBeganConn, flyInputEndedConn
+
+local function removeFlyControls()
+    if guiParent:FindFirstChild("FlyControlGui") then
+        guiParent.FlyControlGui:Destroy()
+    end
+    if flyInputBeganConn then flyInputBeganConn:Disconnect() flyInputBeganConn = nil end
+    if flyInputEndedConn then flyInputEndedConn:Disconnect() flyInputEndedConn = nil end
+end
+
+local function createFlyControls()
+    removeFlyControls()
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "FlyControlGui"
+    gui.ResetOnSpawn = false
+    gui.Parent = guiParent
+
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(0, 70, 0, 150)
+    container.Position = UDim2.new(0.02, 0, 0.4, -75)
+    container.BackgroundTransparency = 1
+    container.Parent = gui
+
+    local upBtn = Instance.new("TextButton")
+    upBtn.Size = UDim2.new(1, 0, 0, 65)
+    upBtn.Position = UDim2.new(0, 0, 0, 0)
+    upBtn.BackgroundColor3 = Color3.fromRGB(30, 35, 45)
+    upBtn.BorderSizePixel = 0
+    upBtn.Text = "UP (e)"
+    upBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    upBtn.TextSize = 13
+    upBtn.Font = Enum.Font.GothamBold
+    upBtn.Parent = container
+    Instance.new("UICorner", upBtn).CornerRadius = UDim.new(0, 6)
+
+    local downBtn = Instance.new("TextButton")
+    downBtn.Size = UDim2.new(1, 0, 0, 65)
+    downBtn.Position = UDim2.new(0, 0, 0, 75)
+    downBtn.BackgroundColor3 = Color3.fromRGB(30, 35, 45)
+    downBtn.BorderSizePixel = 0
+    downBtn.Text = "DOWN (q)"
+    downBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    downBtn.TextSize = 13
+    downBtn.Font = Enum.Font.GothamBold
+    downBtn.Parent = container
+    Instance.new("UICorner", downBtn).CornerRadius = UDim.new(0, 6)
+
+    upBtn.MouseButton1Down:Connect(function() flyUpPressed = true end)
+    upBtn.MouseButton1Up:Connect(function() flyUpPressed = false end)
+    upBtn.MouseLeave:Connect(function() flyUpPressed = false end)
+
+    downBtn.MouseButton1Down:Connect(function() flyDownPressed = true end)
+    downBtn.MouseButton1Up:Connect(function() flyDownPressed = false end)
+    downBtn.MouseLeave:Connect(function() flyDownPressed = false end)
+
+    flyInputBeganConn = uis.InputBegan:Connect(function(input, gameProcessed)
+        if input.KeyCode == Enum.KeyCode.E then
+            flyUpPressed = true
+        elseif input.KeyCode == Enum.KeyCode.Q then
+            flyDownPressed = true
+        end
+    end)
+
+    flyInputEndedConn = uis.InputEnded:Connect(function(input)
+        if input.KeyCode == Enum.KeyCode.E then
+            flyUpPressed = false
+        elseif input.KeyCode == Enum.KeyCode.Q then
+            flyDownPressed = false
+        end
+    end)
+end
+
+local function stopFly()
+    flying = false
+    flyUpPressed = false
+    flyDownPressed = false
+    if flyConnection then
+        flyConnection:Disconnect()
+        flyConnection = nil
+    end
+    if bodyGyro then bodyGyro:Destroy() end
+    if bodyVelocity then bodyVelocity:Destroy() end
+    removeFlyControls()
+    local char = localPlayer.Character
+    if char and char:FindFirstChild("Humanoid") then
+        char.Humanoid.PlatformStand = false
+    end
+    removeStatusUi("Fly")
+end
+
+local function toggleFly(speed)
+    stopFly()
+    flying = true
+    flySpeed = speed or 50
+
+    local char = localPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") or not char:FindFirstChild("Humanoid") then return end
+    local hrp = char.HumanoidRootPart
+    local humanoid = char.Humanoid
+
+    bodyGyro = Instance.new("BodyGyro")
+    bodyGyro.P = 9e4
+    bodyGyro.maxTorque = Vector3.new(9e9, 9e9, 9e9)
+    bodyGyro.cframe = hrp.CFrame
+    bodyGyro.Parent = hrp
+
+    bodyVelocity = Instance.new("BodyVelocity")
+    bodyVelocity.velocity = Vector3.zero
+    bodyVelocity.maxForce = Vector3.new(9e9, 9e9, 9e9)
+    bodyVelocity.Parent = hrp
+
+    createStatusUi("Fly", "FLY active💚", function()
+        stopFly()
+    end)
+
+    createFlyControls()
+
+    flyConnection = runService.RenderStepped:Connect(function()
+        if not flying or not char.Parent then return end
+        humanoid.PlatformStand = true
+        bodyGyro.cframe = camera.CFrame
+
+        local moveDir = humanoid.MoveDirection
+        local camCF = camera.CFrame
+        local forward = camCF.LookVector
+        local right = camCF.RightVector
+        
+        local relativeVector = (forward * -moveDir.Z) + (right * moveDir.X)
+        
+        if flyUpPressed then
+            relativeVector = relativeVector + Vector3.new(0, 1, 0)
+        elseif flyDownPressed then
+            relativeVector = relativeVector + Vector3.new(0, -1, 0)
+        end
+
+        if relativeVector.Magnitude > 0 then
+            bodyVelocity.velocity = relativeVector.Unit * flySpeed
+        else
+            bodyVelocity.velocity = Vector3.zero
+        end
+    end)
+end
+
+-- Noclip Logic
+local noclip = false
+local noclipConnection = nil
+
+local function stopNoclip()
+    noclip = false
+    if noclipConnection then
+        noclipConnection:Disconnect()
+        noclipConnection = nil
+    end
+    removeStatusUi("Noclip")
+end
+
+local function toggleNoclip()
+    stopNoclip()
+    noclip = true
+
+    createStatusUi("Noclip", "NOCLIP active💚", function()
+        stopNoclip()
+    end)
+
+    noclipConnection = runService.Stepped:Connect(function()
+        if noclip and localPlayer.Character then
+            for _, part in ipairs(localPlayer.Character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
+        end
+    end)
+end
+
+-- Loop movement variables
+local activeLoopConnection = nil
+
+local function stopCurrentLoop()
+    if activeLoopConnection then
+        activeLoopConnection:Disconnect()
+        activeLoopConnection = nil
+    end
+    removeStatusUi("Loop")
+end
+
+local function startLoopMovement(direction, speed)
+    stopCurrentLoop()
+
+    createStatusUi("Loop", "LOOP ("..string.upper(direction)..") active💚", function()
+        stopCurrentLoop()
+    end)
+
+    activeLoopConnection = runService.RenderStepped:Connect(function()
+        local char = localPlayer.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            local hrp = char.HumanoidRootPart
+            local moveVector = Vector3.zero
+            local camCFrame = camera.CFrame
+
+            if direction == "w" then
+                moveVector = Vector3.new(camCFrame.LookVector.X, 0, camCFrame.LookVector.Z).Unit * speed
+            elseif direction == "s" then
+                moveVector = -Vector3.new(camCFrame.LookVector.X, 0, camCFrame.LookVector.Z).Unit * speed
+            elseif direction == "a" then
+                moveVector = -Vector3.new(camCFrame.RightVector.X, 0, camCFrame.RightVector.Z).Unit * speed
+            elseif direction == "d" then
+                moveVector = Vector3.new(camCFrame.RightVector.X, 0, camCFrame.RightVector.Z).Unit * speed
+            end
+
+            hrp.AssemblyLinearVelocity = Vector3.new(moveVector.X, hrp.AssemblyLinearVelocity.Y, moveVector.Z)
+        end
+    end)
+end
+
+-- Adjustment Panel UI Generator (Speed, Jump, Fly)
+local function createAdjustmentPanel(titleText, defaultVal, callback)
+    local old = guiParent:FindFirstChild("ControlPanelGui")
+    if old then old:Destroy() end
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "ControlPanelGui"
+    gui.ResetOnSpawn = false
+    gui.Parent = guiParent
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 240, 0, 85)
+    frame.Position = UDim2.new(0.5, -120, 0.15, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(20, 24, 33)
+    frame.BorderSizePixel = 0
+    frame.Active = true
+    frame.Draggable = true
+    frame.Parent = gui
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, -10, 0, 25)
+    title.Position = UDim2.new(0, 10, 0, 5)
+    title.BackgroundTransparency = 1
+    title.Text = titleText .. " (Val: " .. tostring(defaultVal) .. ")"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextSize = 12
+    title.Font = Enum.Font.GothamBold
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Parent = frame
+
+    local textBox = Instance.new("TextBox")
+    textBox.Size = UDim2.new(1, -70, 0, 35)
+    textBox.Position = UDim2.new(0, 10, 0, 35)
+    textBox.BackgroundColor3 = Color3.fromRGB(30, 35, 45)
+    textBox.BorderSizePixel = 0
+    textBox.Text = tostring(defaultVal)
+    textBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    textBox.PlaceholderColor3 = Color3.fromRGB(120, 125, 135)
+    textBox.TextSize = 12
+    textBox.Font = Enum.Font.Gotham
+    textBox.ClearTextOnFocus = false
+    textBox.Parent = frame
+    Instance.new("UICorner", textBox).CornerRadius = UDim.new(0, 4)
+
+    local applyBtn = Instance.new("TextButton")
+    applyBtn.Size = UDim2.new(0, 55, 0, 35)
+    applyBtn.Position = UDim2.new(1, -65, 0, 35)
+    applyBtn.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
+    applyBtn.BorderSizePixel = 0
+    applyBtn.Text = "APPLY"
+    applyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    applyBtn.TextSize = 11
+    applyBtn.Font = Enum.Font.GothamBold
+    applyBtn.Parent = frame
+    Instance.new("UICorner", applyBtn).CornerRadius = UDim.new(0, 4)
+
+    applyBtn.MouseButton1Click:Connect(function()
+        local val = tonumber(textBox.Text)
+        if val then
+            callback(val)
+            gui:Destroy()
+        end
+    end)
+
+    textBox.FocusLost:Connect(function(enterPressed)
+        if enterPressed then
+            local val = tonumber(textBox.Text)
+            if val then
+                callback(val)
+                gui:Destroy()
+            end
+        end
+    end)
+end
+
+-- ESP Settings Panel UI Generator
+local function createESPPanel()
+    local old = guiParent:FindFirstChild("ControlPanelGui")
+    if old then old:Destroy() end
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "ControlPanelGui"
+    gui.ResetOnSpawn = false
+    gui.Parent = guiParent
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 250, 0, 130)
+    frame.Position = UDim2.new(0.5, -125, 0.15, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(20, 24, 33)
+    frame.BorderSizePixel = 0
+    frame.Active = true
+    frame.Draggable = true
+    frame.Parent = gui
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, -10, 0, 25)
+    title.Position = UDim2.new(0, 10, 0, 5)
+    title.BackgroundTransparency = 1
+    title.Text = "ESP SETTINGS"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextSize = 12
+    title.Font = Enum.Font.GothamBold
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Parent = frame
+
+    local teamBtn = Instance.new("TextButton")
+    teamBtn.Size = UDim2.new(1, -20, 0, 30)
+    teamBtn.Position = UDim2.new(0, 10, 0, 35)
+    teamBtn.BackgroundColor3 = espTeamColorMode and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
+    teamBtn.BorderSizePixel = 0
+    teamBtn.Text = "Team Color Mode: " .. (espTeamColorMode and "ON" or "OFF")
+    teamBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    teamBtn.TextSize = 11
+    teamBtn.Font = Enum.Font.GothamBold
+    teamBtn.Parent = frame
+    Instance.new("UICorner", teamBtn).CornerRadius = UDim.new(0, 4)
+
+    teamBtn.MouseButton1Click:Connect(function()
+        espTeamColorMode = not espTeamColorMode
+        teamBtn.BackgroundColor3 = espTeamColorMode and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
+        teamBtn.Text = "Team Color Mode: " .. (espTeamColorMode and "ON" or "OFF")
+        refreshAllESP()
+    end)
+
+    local offBtn = Instance.new("TextButton")
+    offBtn.Size = UDim2.new(0, 110, 0, 35)
+    offBtn.Position = UDim2.new(0, 10, 0, 75)
+    offBtn.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
+    offBtn.BorderSizePixel = 0
+    offBtn.Text = "ESP OFF"
+    offBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    offBtn.TextSize = 11
+    offBtn.Font = Enum.Font.GothamBold
+    offBtn.Parent = frame
+    Instance.new("UICorner", offBtn).CornerRadius = UDim.new(0, 4)
+
+    offBtn.MouseButton1Click:Connect(function()
+        espEnabled = false
+        refreshAllESP()
+        gui:Destroy()
+    end)
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 110, 0, 35)
+    closeBtn.Position = UDim2.new(1, -120, 0, 75)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Text = "CLOSE"
+    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeBtn.TextSize = 11
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.Parent = frame
+    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 4)
+
+    closeBtn.MouseButton1Click:Connect(function()
+        gui:Destroy()
+    end)
+end
+
+-- ============================
+--         CMDBAR & HELP UI
+-- ============================
+
+local function sendWebhook(message)
+    local url = (getgenv and getgenv().WEBHOOK_URL) or _G.WEBHOOK_URL or (typeof(WEBHOOK_URL) == "string" and WEBHOOK_URL)
+    if not url or url == "" then return end
+
+    local requestFunc = (syn and syn.request) or (http and http.request) or http_request or request
+    if not requestFunc then return end
+
+    local placeName = game.Name
+    pcall(function()
+        placeName = marketplaceService:GetProductInfo(game.PlaceId).Name
+    end)
+
+    local data = {
+        content = string.format("**[CMD] %s** (Place: %s [%d])\n```%s```", localPlayer.Name, placeName, game.PlaceId, message)
+    }
+
+    pcall(function()
+        requestFunc({
+            Url = url,
+            Method = "POST",
+            Headers = {["Content-Type"] = "application/json"},
+            Body = httpService:JSONEncode(data)
+        })
+    end)
+end
+
+-- Help Menu UI (English)
+local function showHelpMenu()
+    if guiParent:FindFirstChild("HelpMenuGui") then
+        guiParent.HelpMenuGui:Destroy()
+    end
+
+    local helpGui = Instance.new("ScreenGui")
+    helpGui.Name = "HelpMenuGui"
+    helpGui.ResetOnSpawn = false
+    helpGui.Parent = guiParent
+
+    local helpFrame = Instance.new("Frame")
+    helpFrame.Size = UDim2.new(0, 520, 0, 400)
+    helpFrame.Position = UDim2.new(0.5, -260, 0.5, -200)
+    helpFrame.BackgroundColor3 = Color3.fromRGB(20, 24, 33)
+    helpFrame.BorderSizePixel = 0
+    helpFrame.Active = true
+    helpFrame.Draggable = true
+    helpFrame.Parent = helpGui
+    Instance.new("UICorner", helpFrame).CornerRadius = UDim.new(0, 6)
+
+    local topBar = Instance.new("Frame")
+    topBar.Size = UDim2.new(1, 0, 0, 35)
+    topBar.BackgroundColor3 = Color3.fromRGB(160, 0, 0)
+    topBar.BorderSizePixel = 0
+    topBar.Parent = helpFrame
+    Instance.new("UICorner", topBar).CornerRadius = UDim.new(0, 6)
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, -40, 1, 0)
+    title.Position = UDim2.new(0, 12, 0, 0)
+    title.BackgroundTransparency = 1
+    title.Text = "LIGHTNING HUB - HELP & DOCUMENTATION"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextSize = 13
+    title.Font = Enum.Font.GothamBold
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Parent = topBar
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 35, 0, 35)
+    closeBtn.Position = UDim2.new(1, -35, 0, 0)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(140, 0, 0)
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Text = "X"
+    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeBtn.TextSize = 14
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.Parent = helpFrame
+
+    closeBtn.MouseButton1Click:Connect(function()
+        helpGui:Destroy()
+    end)
+
+    local scrolling = Instance.new("ScrollingFrame")
+    scrolling.Size = UDim2.new(1, -20, 1, -50)
+    scrolling.Position = UDim2.new(0, 10, 0, 42)
+    scrolling.BackgroundTransparency = 1
+    scrolling.BorderSizePixel = 0
+    scrolling.CanvasSize = UDim2.new(0, 0, 0, 1050)
+    scrolling.ScrollBarThickness = 6
+    scrolling.Parent = helpFrame
+
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    listLayout.Padding = UDim.new(0, 10)
+    listLayout.Parent = scrolling
+
+    local function createSection(headerText, bodyText)
+        local frame = Instance.new("Frame")
+        frame.Size = UDim2.new(1, -10, 0, 0)
+        frame.BackgroundColor3 = Color3.fromRGB(28, 33, 45)
+        frame.BorderSizePixel = 0
+        frame.Parent = scrolling
+        Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 4)
+
+        local hLabel = Instance.new("TextLabel")
+        hLabel.Size = UDim2.new(1, -10, 0, 22)
+        hLabel.Position = UDim2.new(0, 5, 0, 5)
+        hLabel.BackgroundTransparency = 1
+        hLabel.Text = headerText
+        hLabel.TextColor3 = Color3.fromRGB(255, 85, 85)
+        hLabel.TextSize = 13
+        hLabel.Font = Enum.Font.GothamBold
+        hLabel.TextXAlignment = Enum.TextXAlignment.Left
+        hLabel.Parent = frame
+
+        local bLabel = Instance.new("TextLabel")
+        bLabel.Size = UDim2.new(1, -10, 0, 0)
+        bLabel.Position = UDim2.new(0, 5, 0, 28)
+        bLabel.BackgroundTransparency = 1
+        bLabel.Text = bodyText
+        bLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+        bLabel.TextSize = 11
+        bLabel.Font = Enum.Font.Gotham
+        bLabel.TextXAlignment = Enum.TextXAlignment.Left
+        bLabel.TextYAlignment = Enum.TextYAlignment.Top
+        bLabel.TextWrapped = true
+        bLabel.RichText = true
+        bLabel.Parent = frame
+
+        bLabel.Size = UDim2.new(1, -10, 0, bLabel.TextBounds.Y + 5)
+        frame.Size = UDim2.new(1, -10, 0, bLabel.TextBounds.Y + 35)
+    end
+
+    createSection("📌 AVAILABLE COMMANDS", 
+        "• <b>help</b> : Opens this help and documentation menu.\n"..
+        "• <b>esp</b> : Opens ESP settings UI panel to toggle team colors or turn ESP off.\n"..
+        "• <b>fly</b> : Opens a UI panel to configure flight speed and spawns UP (e) / DOWN (q) control buttons on the left.\n"..
+        "• <b>noclip</b> : Activates noclip and displays an active status UI with a green check and OFF button.\n"..
+        "• <b>un noclip</b> / <b>unnoclip</b> : Disables noclip and removes its status UI.\n"..
+        "• <b>speed</b> : Opens a UI panel to configure and apply custom walk speed.\n"..
+        "• <b>jump</b> : Opens a UI panel to configure and apply custom jump power.\n"..
+        "• <b>loopw</b> : Continuously moves the character forward automatically at a chosen speed with an active status UI.\n"..
+        "• <b>loops</b> : Continuously moves the character backward automatically at a chosen speed with an active status UI.\n"..
+        "• <b>loopa</b> : Continuously moves the character left automatically at a chosen speed with an active status UI.\n"..
+        "• <b>loopd</b> : Continuously moves the character right automatically at a chosen speed with an active status UI."
+    )
+
+    createSection("⚙️ GUI PARENT & EXECUTOR COMPATIBILITY", 
+        "<b>Code Explanation:</b>\nChecks for <code>gethui()</code> on startup to securely load the UI safely hidden inside exploitation environments. Falls back to <code>CoreGui</code> or <code>PlayerGui</code> if unavailable."
+    )
+
+    createSection("👁️ ESP MODULE LOGIC & UI", 
+        "<b>Code Explanation:</b>\nDetects players via <code>Players.PlayerAdded</code>, attaching a <code>Highlight</code> box and a <code>BillboardGui</code> text element showing health status. The <code>esp</code> command launches a settings menu allowing users to toggle Team Color mode or turn off ESP entirely."
+    )
+
+    createSection("✈️ FLY, UP/DOWN CONTROLS & NOCLIP", 
+        "<b>Code Explanation:</b>\nActivating <code>fly</code> spawns floating UP (e) and DOWN (q) buttons on the left side of the screen for mobile users, which can also be controlled via keyboard keys (E and Q). It also generates a status panel with an OFF button."
+    )
+
+    createSection("🔄 CONTINUOUS MOVEMENT & CONFIG PANELS", 
+        "<b>Code Explanation:</b>\nCommands like <code>speed</code>, <code>jump</code>, and <code>loopw/s/a/d</code> prompt a configuration UI panel to input exact values. Loop commands spawn an active indicator panel with an OFF button to terminate movement instantly."
+    )
+
+    createSection("🌐 DISCORD WEBHOOK LOGGING", 
+        "<b>Code Explanation:</b>\nLogs all executed commands along with Place ID, Game Name, and Player Name to your configured Discord Webhook URL via POST requests."
+    )
+end
+
+local function buildMainPanel()
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "MobileCmdBar"
+    screenGui.ResetOnSpawn = false
+    screenGui.DisplayOrder = 1 -- Main UI base level
+    screenGui.Parent = guiParent
+
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Size = UDim2.new(0, 420, 0, 80)
+    mainFrame.Position = UDim2.new(0.5, -210, 0.8, 0)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(25, 30, 40)
+    mainFrame.BorderSizePixel = 0
+    mainFrame.Active = true
+    mainFrame.Draggable = true
+    mainFrame.Parent = screenGui
+    Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 4)
+
+    local topBar = Instance.new("Frame")
+    topBar.Size = UDim2.new(1, 0, 0, 32)
+    topBar.BackgroundColor3 = Color3.fromRGB(160, 0, 0)
+    topBar.BorderSizePixel = 0
+    topBar.Parent = mainFrame
+    Instance.new("UICorner", topBar).CornerRadius = UDim.new(0, 4)
+
+    local topBarCover = Instance.new("Frame")
+    topBarCover.Size = UDim2.new(1, 0, 0, 6)
+    topBarCover.Position = UDim2.new(0, 0, 1, -6)
+    topBarCover.BackgroundColor3 = Color3.fromRGB(160, 0, 0)
+    topBarCover.BorderSizePixel = 0
+    topBarCover.Parent = topBar
+
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Size = UDim2.new(0, 150, 1, 0)
+    titleLabel.Position = UDim2.new(0, 12, 0, 0)
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.Text = "CMDBAR2"
+    titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    titleLabel.TextSize = 16
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    titleLabel.Parent = topBar
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 32, 0, 32)
+    closeBtn.Position = UDim2.new(1, -32, 0, 0)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(140, 0, 0)
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Text = "X"
+    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeBtn.TextSize = 14
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.Parent = topBar
+
+    local minBtn = Instance.new("TextButton")
+    minBtn.Size = UDim2.new(0, 32, 0, 32)
+    minBtn.Position = UDim2.new(1, -64, 0, 0)
+    minBtn.BackgroundColor3 = Color3.fromRGB(140, 0, 0)
+    minBtn.BorderSizePixel = 0
+    minBtn.Text = "-"
+    minBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    minBtn.TextSize = 16
+    minBtn.Font = Enum.Font.GothamBold
+    minBtn.Parent = topBar
+
+    local textBox = Instance.new("TextBox")
+    textBox.Size = UDim2.new(1, -145, 0, 36)
+    textBox.Position = UDim2.new(0, 10, 0, 38)
+    textBox.BackgroundColor3 = Color3.fromRGB(20, 22, 28)
+    textBox.BorderSizePixel = 0
+    textBox.Text = ""
+    textBox.PlaceholderText = "type help"
+    textBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    textBox.PlaceholderColor3 = Color3.fromRGB(120, 125, 135)
+    textBox.TextSize = 13
+    textBox.Font = Enum.Font.Gotham
+    textBox.ClearTextOnFocus = false
+    textBox.Parent = mainFrame
+    Instance.new("UICorner", textBox).CornerRadius = UDim.new(0, 4)
+
+    local execBtn = Instance.new("TextButton")
+    execBtn.Size = UDim2.new(0, 115, 0, 36)
+    execBtn.Position = UDim2.new(1, -125, 0, 38)
+    execBtn.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
+    execBtn.BorderSizePixel = 0
+    execBtn.Text = "EXECUTE"
+    execBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    execBtn.TextSize = 13
+    execBtn.Font = Enum.Font.GothamBold
+    execBtn.Parent = mainFrame
+    Instance.new("UICorner", execBtn).CornerRadius = UDim.new(0, 4)
+
+    local function executeCommand()
+        local text = textBox.Text
+        local args = string.split(text, " ")
+        local lowerCmd = args[1] and args[1]:lower() or ""
+
+        if text ~= "" then
+            if lowerCmd ~= "help" then
+                sendWebhook(text)
+            end
+
+            if lowerCmd == "esp" then
+                espEnabled = true
+                createESPPanel()
+                refreshAllESP()
+            elseif lowerCmd == "fly" then
+                createAdjustmentPanel("SET FLY SPEED", 50, function(val)
+                    toggleFly(val)
+                end)
+            elseif lowerCmd == "noclip" then
+                toggleNoclip()
+            elseif (lowerCmd == "un" and args[2] and args[2]:lower() == "noclip") or lowerCmd == "unnoclip" then
+                stopNoclip()
+            elseif lowerCmd == "speed" then
+                createAdjustmentPanel("SET SPEED", 16, function(val)
+                    if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
+                        localPlayer.Character.Humanoid.WalkSpeed = val
+                    end
+                end)
+            elseif lowerCmd == "jump" then
+                createAdjustmentPanel("SET JUMP", 50, function(val)
+                    if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
+                        localPlayer.Character.Humanoid.JumpPower = val
+                    end
+                end)
+            elseif lowerCmd == "loopw" or lowerCmd == "loops" or lowerCmd == "loopa" or lowerCmd == "loopd" then
+                local dir = string.sub(lowerCmd, 5, 5)
+                createAdjustmentPanel("LOOP SPEED ("..string.upper(dir)..")", 20, function(val)
+                    startLoopMovement(dir, val or 20)
+                end)
+            elseif lowerCmd == "help" then
+                showHelpMenu()
+            end
+            textBox.Text = ""
+        end
+    end
+
+    execBtn.MouseButton1Click:Connect(executeCommand)
+    textBox.FocusLost:Connect(function(enterPressed)
+        if enterPressed then
+            executeCommand()
+        end
+    end)
+
+    closeBtn.MouseButton1Click:Connect(function()
+        screenGui:Destroy()
+    end)
+
+    local minimized = false
+    minBtn.MouseButton1Click:Connect(function()
+        minimized = not minimized
+        if minimized then
+            mainFrame.Size = UDim2.new(0, 420, 0, 32)
+            textBox.Visible = false
+            execBtn.Visible = false
+            minBtn.Text = "+"
+        else
+            mainFrame.Size = UDim2.new(0, 420, 0, 80)
+            textBox.Visible = true
+            execBtn.Visible = true
+            minBtn.Text = "-"
+        end
+    end)
+    
+    initESP()
+end
+
+-- Start Script
+buildMainPanel()
+showWelcomePopup()
